@@ -8,6 +8,7 @@ import { API_ROUTES, CHAT_NAMESPACE, messagePageQuerySchema, sendMessageSchema, 
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/configure-app';
 import { PrismaService } from '../src/infra/database/prisma.service';
+import { APP_ENVIRONMENT, environmentSchema } from '../src/config/environment';
 
 let app: INestApplication;
 let origin: string;
@@ -15,6 +16,7 @@ let databaseReady = true;
 
 before(async () => {
   const module = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(APP_ENVIRONMENT).useValue(environmentSchema.parse({ NODE_ENV: 'test', DATABASE_URL: 'postgresql://test:test@localhost/test' }))
     .overrideProvider(PrismaService).useValue({ isReady: async () => databaseReady }).compile();
   app = module.createNestApplication({ logger: false });
   configureApp(app);
@@ -37,12 +39,17 @@ test('DB 연결 상태와 API 생존 상태를 구분한다', async () => {
     assert.equal((await fetch(`${origin}${API_ROUTES.health}`)).status, 200);
   } finally { databaseReady = true; }
 });
-test('구현 전 인증 API는 성공 응답을 반환하지 않는다', async () => {
+test('인증 요청은 허용된 Origin 없이 처리되지 않는다', async () => {
   const response = await fetch(`${origin}${API_ROUTES.login}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: 'test@example.com', password: 'not-a-real-password' }),
   });
-  assert.equal(response.status, 404);
+  assert.equal(response.status, 403);
+});
+test('구글 앱 설정이 없으면 기능을 비활성화한다', async () => {
+  assert.deepEqual(await (await fetch(`${origin}${API_ROUTES.authProviders}`)).json(), { google: false });
+  const response = await fetch(`${origin}${API_ROUTES.googleStart}`, { method: 'POST', headers: { Origin: 'http://localhost:3000' } });
+  assert.equal(response.status, 503);
 });
 test('Socket.IO 연결과 입력 검증이 실제 네트워크에서 동작한다', async () => {
   const socket = io(`${origin}${CHAT_NAMESPACE}`, { autoConnect: false, reconnection: false, transports: ['websocket'] });

@@ -18,15 +18,21 @@ enum MemberRole {
   MEMBER
 }
 
+enum ParticipantKind {
+  MEMBER
+  GUEST
+}
+
 model User {
   id           String       @id @default(uuid()) @db.Uuid
-  email        String       @unique @db.VarChar(254)
-  passwordHash String       @map("password_hash")
+  email        String?      @unique @db.VarChar(254)
+  passwordHash String?      @map("password_hash")
+  googleId     String?      @unique @map("google_id") @db.VarChar(255)
   displayName  String       @map("display_name") @db.VarChar(50)
   avatarUrl    String?      @map("avatar_url")
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   memberships RoomMember[]
-  messages     Message[]
+  sessions     MemberSession[]
 
   @@map("users")
 }
@@ -46,15 +52,21 @@ model ChatRoom {
 }
 
 model RoomMember {
+  id          String          @id @default(uuid()) @db.Uuid
   roomId      String     @map("room_id") @db.Uuid
-  userId      String     @map("user_id") @db.Uuid
+  userId      String?    @map("user_id") @db.Uuid
+  kind        ParticipantKind @default(MEMBER)
+  displayName String          @map("display_name") @db.VarChar(50)
   role        MemberRole @default(MEMBER)
   lastReadSeq BigInt     @default(0) @map("last_read_seq")
   joinedAt    DateTime   @default(now()) @map("joined_at") @db.Timestamptz(3)
+  leftAt      DateTime?  @map("left_at") @db.Timestamptz(3)
   room        ChatRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  user        User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  messages    Message[]
 
-  @@id([roomId, userId])
+  @@unique([roomId, userId])
+  @@unique([roomId, id])
   @@index([userId])
   @@map("room_members")
 }
@@ -62,16 +74,38 @@ model RoomMember {
 model Message {
   id              String   @id @default(uuid()) @db.Uuid
   roomId          String   @map("room_id") @db.Uuid
-  senderId        String   @map("sender_id") @db.Uuid
+  senderMemberId  String   @map("sender_member_id") @db.Uuid
   clientMessageId String   @map("client_message_id") @db.Uuid
   seq             BigInt
   body            String   @db.VarChar(4000)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   room            ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  sender          User     @relation(fields: [senderId], references: [id], onDelete: Restrict)
+  sender          RoomMember @relation(fields: [roomId, senderMemberId], references: [roomId, id], onDelete: Restrict)
 
   @@unique([roomId, seq])
-  @@unique([roomId, senderId, clientMessageId])
-  @@index([senderId])
+  @@unique([roomId, senderMemberId, clientMessageId], map: "messages_room_sender_client_key")
+  @@index([senderMemberId])
   @@map("messages")
+}
+
+model MemberSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash") @db.Char(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("member_sessions")
+}
+
+model GoogleLoginAttempt {
+  tokenHash String   @id @map("token_hash") @db.Char(64)
+  codeVerifier String @map("code_verifier") @db.VarChar(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("google_login_attempts")
 }

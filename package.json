@@ -18,6 +18,7 @@
     "typecheck": "pnpm build:shared && pnpm db:generate && pnpm -r typecheck",
     "build": "pnpm build:shared && pnpm --filter @chat/api build && pnpm --filter @chat/web build",
     "test": "pnpm build:shared && pnpm --filter @chat/api test",
+    "test:integration": "pnpm build:shared && pnpm --filter @chat/api test:integration",
     "mobile:export": "pnpm build:shared && pnpm --filter @chat/mobile export"
   }
 }

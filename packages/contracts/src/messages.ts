@@ -6,7 +6,7 @@ export const sendMessageSchema = z.object({
   body: z.string().trim().min(1).max(4000),
 }).strict();
 export const messageSchema = sendMessageSchema.extend({
-  messageId: z.uuid(), senderId: z.uuid(),
+  messageId: z.uuid(), senderMemberId: z.uuid(),
   seq: messageSequenceSchema.positive(), createdAt: z.iso.datetime(),
 });
 export const messagePageQuerySchema = z.object({

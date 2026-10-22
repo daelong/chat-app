@@ -6,6 +6,7 @@
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "prisma generate && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "test:integration": "prisma generate && tsc -p tsconfig.test.json && node --test dist-test/test/integration/*.test.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy"
@@ -16,6 +17,7 @@
     "@nestjs/platform-express": "^11.1.11", "@nestjs/platform-socket.io": "^11.1.11",
     "@nestjs/websockets": "^11.1.11",
     "@prisma/adapter-pg": "^7.10.0", "@prisma/client": "^7.10.0",
+    "google-auth-library": "^11.3.1",
     "dotenv": "^17.2.3", "helmet": "^8.1.0", "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2", "rxjs": "^7.8.2", "socket.io": "^4.8.3",
     "zod": "^4.3.6"

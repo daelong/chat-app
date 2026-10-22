@@ -24,6 +24,7 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DATABASE_URL: postgresql://chat:chat_ci_password@localhost:5432/chat?schema=public
+      TEST_DATABASE_URL: postgresql://chat:chat_ci_password@localhost:5432/chat?schema=public
       CI: true
     steps:
       - uses: actions/checkout@v4
@@ -36,5 +37,6 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm db:deploy
       - run: pnpm test
+      - run: pnpm test:integration
       - run: pnpm build
       - run: pnpm mobile:export
