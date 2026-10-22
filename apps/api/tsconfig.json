@@ -1,0 +1,10 @@
+{
+  "extends": "@chat/config/typescript/base.json",
+  "compilerOptions": {
+    "module": "Node16", "moduleResolution": "Node16",
+    "emitDecoratorMetadata": true, "experimentalDecorators": true,
+    "rootDir": "src", "outDir": "dist", "sourceMap": true,
+    "types": ["node"]
+  },
+  "include": ["src"], "exclude": ["node_modules", "dist", "dist-test", "test"]
+}

@@ -1,0 +1,11 @@
+.git
+**/node_modules
+**/dist
+**/dist-test
+**/.next
+**/.expo
+**/.env
+**/.env.*
+!**/.env.example
+apps/api/src/generated
+.DS_Store

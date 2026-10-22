@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Chat App", "slug": "chat-app", "version": "0.1.0",
+    "scheme": "chatapp", "orientation": "portrait", "userInterfaceStyle": "light",
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.daelong.chat" },
+    "android": { "package": "com.daelong.chat" },
+    "web": { "bundler": "metro", "output": "single" },
+    "plugins": ["expo-router", "expo-secure-store"]
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "name": "@chat/api", "version": "0.1.0", "private": true,
+  "scripts": {
+    "dev": "prisma generate && nest start --watch",
+    "build": "prisma generate && nest build",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "prisma generate && tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@chat/contracts": "workspace:*",
+    "@nestjs/common": "^11.1.11", "@nestjs/core": "^11.1.11",
+    "@nestjs/platform-express": "^11.1.11", "@nestjs/platform-socket.io": "^11.1.11",
+    "@nestjs/websockets": "^11.1.11",
+    "@prisma/adapter-pg": "^7.10.0", "@prisma/client": "^7.10.0",
+    "dotenv": "^17.2.3", "helmet": "^8.1.0", "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2", "rxjs": "^7.8.2", "socket.io": "^4.8.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@chat/config": "workspace:*", "@nestjs/cli": "^11.0.16",
+    "@nestjs/testing": "^11.1.11", "@types/express": "^5.0.6", "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.6", "prisma": "^7.10.0",
+    "socket.io-client": "^4.8.3", "typescript": "~5.9.3"
+  }
+}

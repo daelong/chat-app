@@ -1,0 +1,23 @@
+{
+  "name": "chat-platform",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.28.2",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "build:shared": "pnpm --filter @chat/contracts --filter @chat/utils build",
+    "dev": "pnpm build:shared && pnpm --parallel --filter @chat/api --filter @chat/web dev",
+    "dev:api": "pnpm build:shared && pnpm --filter @chat/api dev",
+    "dev:web": "pnpm build:shared && pnpm --filter @chat/web dev",
+    "dev:mobile": "pnpm build:shared && pnpm --filter @chat/mobile start",
+    "db:up": "docker compose -f infra/compose.yml up -d postgres",
+    "db:down": "docker compose -f infra/compose.yml down",
+    "db:generate": "pnpm --filter @chat/api db:generate",
+    "db:migrate": "pnpm --filter @chat/api db:migrate",
+    "db:deploy": "pnpm --filter @chat/api db:deploy",
+    "typecheck": "pnpm build:shared && pnpm db:generate && pnpm -r typecheck",
+    "build": "pnpm build:shared && pnpm --filter @chat/api build && pnpm --filter @chat/web build",
+    "test": "pnpm build:shared && pnpm --filter @chat/api test",
+    "mobile:export": "pnpm build:shared && pnpm --filter @chat/mobile export"
+  }
+}

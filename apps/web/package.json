@@ -1,0 +1,14 @@
+{
+  "name": "@chat/web", "version": "0.1.0", "private": true,
+  "scripts": { "dev": "next dev --port 3000", "build": "next build", "start": "next start --port 3000", "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@chat/contracts": "workspace:*", "@chat/utils": "workspace:*",
+    "@tanstack/react-query": "^5.90.0", "next": "^16.2.0",
+    "react": "19.2.3", "react-dom": "19.2.3", "socket.io-client": "^4.8.3", "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@chat/config": "workspace:*", "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^24.0.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.18", "typescript": "~5.9.3"
+  }
+}

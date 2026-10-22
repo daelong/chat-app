@@ -1,0 +1,77 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoomType {
+  DIRECT
+  GROUP
+}
+
+enum MemberRole {
+  OWNER
+  MEMBER
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  email        String       @unique @db.VarChar(254)
+  passwordHash String       @map("password_hash")
+  displayName  String       @map("display_name") @db.VarChar(50)
+  avatarUrl    String?      @map("avatar_url")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  memberships RoomMember[]
+  messages     Message[]
+
+  @@map("users")
+}
+
+model ChatRoom {
+  id            String       @id @default(uuid()) @db.Uuid
+  type          RoomType
+  name          String?      @db.VarChar(100)
+  // 1:1 방 생성 시 정렬한 사용자 UUID 쌍으로 생성합니다.
+  directKey     String?      @unique @map("direct_key")
+  lastSeq       BigInt       @default(0) @map("last_seq")
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  members       RoomMember[]
+  messages      Message[]
+
+  @@map("chat_rooms")
+}
+
+model RoomMember {
+  roomId      String     @map("room_id") @db.Uuid
+  userId      String     @map("user_id") @db.Uuid
+  role        MemberRole @default(MEMBER)
+  lastReadSeq BigInt     @default(0) @map("last_read_seq")
+  joinedAt    DateTime   @default(now()) @map("joined_at") @db.Timestamptz(3)
+  room        ChatRoom   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user        User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@id([roomId, userId])
+  @@index([userId])
+  @@map("room_members")
+}
+
+model Message {
+  id              String   @id @default(uuid()) @db.Uuid
+  roomId          String   @map("room_id") @db.Uuid
+  senderId        String   @map("sender_id") @db.Uuid
+  clientMessageId String   @map("client_message_id") @db.Uuid
+  seq             BigInt
+  body            String   @db.VarChar(4000)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  room            ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender          User     @relation(fields: [senderId], references: [id], onDelete: Restrict)
+
+  @@unique([roomId, seq])
+  @@unique([roomId, senderId, clientMessageId])
+  @@index([senderId])
+  @@map("messages")
+}
