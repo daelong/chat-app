@@ -7,6 +7,8 @@ import { HealthModule } from './modules/health/health.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { RoomsModule } from './modules/rooms/rooms.module';
 import { UsersModule } from './modules/users/users.module';
+import { GuestsModule } from './modules/guests/guests.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
 
-@Module({ imports: [ConfigModule, DatabaseModule, HealthModule, AuthModule, UsersModule, RoomsModule, MessagesModule, RealtimeModule] })
+@Module({ imports: [ConfigModule, DatabaseModule, HealthModule, AuthModule, UsersModule, RoomsModule, GuestsModule, InvitationsModule, MessagesModule, RealtimeModule] })
 export class AppModule {}

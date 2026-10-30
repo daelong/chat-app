@@ -47,6 +47,7 @@ before(async () => {
   await client.query(await readFile('prisma/migrations/20261022010000_member_auth_and_participants/migration.sql', 'utf8'));
   await client.query(await readFile('prisma/migrations/20261022020000_kakao_login/migration.sql', 'utf8'));
   await client.query(await readFile('prisma/migrations/20261022030000_google_login/migration.sql', 'utf8'));
+  await client.query(await readFile('prisma/migrations/20261027000000_invitations_and_guest_sessions/migration.sql', 'utf8'));
   const module = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(APP_ENVIRONMENT).useValue(environment).compile();
   app = module.createNestApplication({ logger: false });

@@ -17,6 +17,12 @@ services:
       timeout: 5s
       retries: 10
 
+  mailpit:
+    image: axllent/mailpit:v1.27.4
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
   api:
     profiles: [app]
     build:
@@ -26,7 +32,15 @@ services:
       NODE_ENV: production
       PORT: 4000
       DATABASE_URL: postgresql://chat:${POSTGRES_PASSWORD:-chat_local_password}@postgres:5432/chat?schema=public
-      WEB_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      WEB_ORIGINS: ${WEB_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      INVITE_WEB_ORIGIN: ${INVITE_WEB_ORIGIN:-http://localhost:3000}
+      MAIL_MODE: ${MAIL_MODE:-disabled}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-chat@localhost.test}
     ports:
       - "127.0.0.1:4000:4000"
     depends_on:

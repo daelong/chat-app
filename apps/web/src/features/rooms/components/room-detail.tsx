@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ApiError, errorMessage } from '@/lib/api-client';
 import { useMemberSession } from '@/features/auth/hooks/use-member-session';
 import { getRoom } from '../api/rooms';
+import { InvitationManager } from '@/features/invitations/components/invitation-manager';
 
 export function RoomDetail({ roomId }: { roomId: string }) {
   const { data: session } = useMemberSession();
@@ -26,7 +27,8 @@ export function RoomDetail({ roomId }: { roomId: string }) {
     <h1 className="mt-3 break-words text-3xl font-bold">{room.data.name ?? '채팅방'}</h1>
     <div className="mt-8 rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center">
       <p className="font-semibold">대화 공간이 준비됐어요.</p>
-      <p className="mt-3 text-sm leading-7 text-slate-500">이메일 초대와 메시지 기능을 준비하고 있어요.</p>
+      <p className="mt-3 text-sm leading-7 text-slate-500">이메일로 참여자를 초대해 보세요. 메시지 송수신 기능을 준비하고 있어요.</p>
     </div>
+    {room.data.myRole === 'OWNER' && session && <InvitationManager roomId={roomId} csrfToken={session.csrfToken} />}
   </section>;
 }

@@ -13,5 +13,11 @@ export const API_ROUTES = {
   rooms: `${API_PREFIX}/rooms`,
   room: (id: string) => `${API_PREFIX}/rooms/${encodeURIComponent(id)}`,
   messages: (id: string) => `${API_PREFIX}/rooms/${encodeURIComponent(id)}/messages`,
+  invitations: (roomId: string) => `${API_PREFIX}/rooms/${encodeURIComponent(roomId)}/invitations`,
+  resendInvitation: (roomId: string, id: string) => `${API_PREFIX}/rooms/${encodeURIComponent(roomId)}/invitations/${encodeURIComponent(id)}/resend`,
+  revokeInvitation: (roomId: string, id: string) => `${API_PREFIX}/rooms/${encodeURIComponent(roomId)}/invitations/${encodeURIComponent(id)}/revoke`,
+  previewInvitation: `${API_PREFIX}/invitations/preview`,
+  acceptInvitation: `${API_PREFIX}/invitations/accept`,
+  guestRoom: (roomId: string) => `${API_PREFIX}/guest/rooms/${encodeURIComponent(roomId)}`,
 } as const;
 export const CHAT_NAMESPACE = '/chat';
