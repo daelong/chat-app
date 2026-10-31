@@ -19,7 +19,7 @@ function cookieOptions(environment: Environment): CookieOptions {
   return { httpOnly: true, secure: environment.NODE_ENV === 'production', sameSite: 'lax', path: '/' };
 }
 
-export function readSessionToken(request: Request, environment: Environment): string | undefined {
+export function readSessionToken(request: Pick<Request, 'headers'>, environment: Environment): string | undefined {
   const name = cookieName(environment);
   const values = (request.headers.cookie ?? '').split(';').map((part) => part.trim())
     .filter((part) => part.startsWith(name + '=')).map((part) => part.slice(name.length + 1));

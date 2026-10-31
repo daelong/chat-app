@@ -5,7 +5,7 @@ export const GUEST_SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 export const guestCookieName = (roomId: string, environment: Environment) =>
   (environment.NODE_ENV === 'production' ? '__Host-chat_guest_' : 'chat_guest_') + roomId.replaceAll('-', '');
 
-export function readGuestToken(request: Request, roomId: string, environment: Environment): string | undefined {
+export function readGuestToken(request: Pick<Request, 'headers'>, roomId: string, environment: Environment): string | undefined {
   const prefix = guestCookieName(roomId, environment) + '=';
   const cookies = (request.headers.cookie ?? '').split(';').map((value) => value.trim()).filter((value) => value.startsWith(prefix));
   const token = cookies[0]?.slice(prefix.length);

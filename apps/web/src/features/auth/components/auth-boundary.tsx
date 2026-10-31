@@ -12,7 +12,7 @@ export function AuthBoundary({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (session.isSuccess && !session.data) router.replace('/login');
   }, [session.isSuccess, session.data, router]);
-  if (session.isError) return <main className="mx-auto max-w-md px-6 py-20">
+  if (session.isError && !session.data) return <main className="mx-auto max-w-md px-6 py-20">
     <p role="alert" className="mb-4 text-slate-600">{errorMessage(session.error)}</p>
     <Button onClick={() => { void session.refetch(); }} disabled={session.isFetching}>다시 확인</Button>
   </main>;

@@ -19,5 +19,6 @@ export const API_ROUTES = {
   previewInvitation: `${API_PREFIX}/invitations/preview`,
   acceptInvitation: `${API_PREFIX}/invitations/accept`,
   guestRoom: (roomId: string) => `${API_PREFIX}/guest/rooms/${encodeURIComponent(roomId)}`,
+  guestMessages: (roomId: string) => `${API_PREFIX}/guest/rooms/${encodeURIComponent(roomId)}/messages`,
 } as const;
 export const CHAT_NAMESPACE = '/chat';
