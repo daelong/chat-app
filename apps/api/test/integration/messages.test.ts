@@ -3,18 +3,21 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readdir, readFile } from 'node:fs/promises';
 import { after, before, test } from 'node:test';
-import type { INestApplication } from '@nestjs/common';
+import { ServiceUnavailableException, type INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Client } from 'pg';
 import { io, type Socket } from 'socket.io-client';
 import { API_ROUTES, CHAT_NAMESPACE, guestSessionSchema, invitationResultSchema, memberSessionSchema, messagePageSchema, messageSchema,
-  roomSchema, type Ack, type ChatParticipant, type GuestSession, type MemberSession, type Message } from '@chat/contracts';
+  roomSchema, roomListSchema, participantListSchema, messageSearchPageSchema, MAX_ATTACHMENT_SIZE,
+  type ReadUpdate, type Ack, type ChatParticipant, type GuestSession, type MemberSession, type Message } from '@chat/contracts';
 import { AppModule } from '../../src/app.module';
 import { APP_ENVIRONMENT, environmentSchema } from '../../src/config/environment';
 import { configureApp } from '../../src/configure-app';
 import { hashSessionToken } from '../../src/modules/auth/session';
 import { guestCookieName } from '../../src/modules/guests/guest-session';
 import { InvitationMailer } from '../../src/modules/invitations/invitation-mailer';
+import { ObjectStorage } from '../../src/modules/attachments/object-storage';
+import { CredentialRateGuard } from '../../src/modules/auth/auth.guards';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl) throw new Error('TEST_DATABASE_URL을 지정하세요.');
@@ -32,6 +35,9 @@ let schemaCreated = false;
 let owner: MemberAuth, outsider: MemberAuth;
 const sockets = new Set<Socket>();
 const password = 'Chat-test123!';
+const objects = new Map<string, Buffer>();
+let storageFailure = false;
+let beforePut: (() => Promise<void>) | undefined;
 
 before(async () => {
   await client.connect();
@@ -41,7 +47,13 @@ before(async () => {
     await client.query(await readFile('prisma/migrations/' + entry.name + '/migration.sql', 'utf8'));
   }
   const module = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(APP_ENVIRONMENT).useValue(environment)
-    .overrideProvider(InvitationMailer).useValue({ mode: () => 'LOCAL', send: async () => {} }).compile();
+    .overrideGuard(CredentialRateGuard).useValue({ canActivate: () => true })
+    .overrideProvider(InvitationMailer).useValue({ mode: () => 'LOCAL', send: async () => {} })
+    .overrideProvider(ObjectStorage).useValue({
+      put: async (key: string, bytes: Buffer) => { if (storageFailure) throw new ServiceUnavailableException(); await beforePut?.(); objects.set(key, bytes); },
+      get: async (key: string) => { const value = objects.get(key); assert.ok(value); return value; },
+      remove: async (key: string) => { objects.delete(key); },
+    }).compile();
   app = module.createNestApplication({ logger: false }); configureApp(app);
   await app.listen(0, '127.0.0.1'); base = await app.getUrl();
   owner = await account('방장'); outsider = await account('다른 회원');
@@ -267,4 +279,165 @@ test('안전한 숫자 범위를 넘는 메시지 순번은 저장을 롤백한�
   assert.equal(response.status, 409);
   assert.equal((await client.query('SELECT count(*) FROM messages WHERE room_id = $1', [id])).rows[0].count, '0');
   assert.equal((await client.query('SELECT last_seq FROM chat_rooms WHERE id = $1', [id])).rows[0].last_seq, String(Number.MAX_SAFE_INTEGER));
+});
+
+test('참여자 목록은 회원·게스트·방장을 구분하고 방장만 다른 참여자를 내보낸다', async () => {
+  const id = await room(), other = await room(); const visitor = await guest(id), otherGuest = await guest(other);
+  const participants = participantListSchema.parse(await (await request(API_ROUTES.participants(id, 'GUEST'), 'GET', undefined, visitor)).json());
+  assert.equal(participants.items.length, 2); assert.equal(participants.me.kind, 'GUEST');
+  assert.ok(participants.items.some((item) => item.role === 'OWNER' && item.kind === 'MEMBER'));
+  assert.ok(!JSON.stringify(participants).includes('email')); assert.ok(!JSON.stringify(participants).includes('userId'));
+  const memberId = randomUUID();
+  await client.query("INSERT INTO room_members (id, room_id, user_id, kind, display_name, role) VALUES ($1, $2, $3, 'MEMBER', '일반 회원', 'MEMBER')", [memberId, id, outsider.session.user.id]);
+  const remove = API_ROUTES.removeParticipant(id, visitor.session.participant.id);
+  assert.equal((await request(remove, 'POST', {}, outsider)).status, 403);
+  assert.equal((await request(remove, 'POST', {}, visitor)).status, 401);
+  assert.equal((await request(remove, 'POST', {}, owner, { 'X-CSRF-Token': '' })).status, 403);
+  assert.equal((await request(remove, 'POST', {}, owner, { Origin: 'https://evil.example' })).status, 403);
+  assert.equal((await request(API_ROUTES.removeParticipant(id, otherGuest.session.participant.id), 'POST', {}, owner)).status, 404);
+  assert.equal((await request(API_ROUTES.removeParticipant(id, participants.items.find((item) => item.role === 'OWNER')!.id), 'POST', {}, owner)).status, 403);
+  assert.equal((await request(API_ROUTES.leaveRoom(id, 'MEMBER'), 'POST', {}, owner)).status, 409);
+  const socket = await socketFor(id, visitor); await join(socket, id); const revoked = event(socket, 'chat:access-revoked');
+  assert.equal((await request(remove, 'POST', {}, owner)).status, 200); await revoked;
+  assert.equal((await request(path(id, visitor), 'GET', undefined, visitor)).status, 401);
+  assert.equal((await client.query('SELECT count(*) FROM guest_sessions WHERE member_id = $1', [visitor.session.participant.id])).rows[0].count, '0');
+  assert.equal((await request(API_ROUTES.leaveRoom(id, 'MEMBER'), 'POST', {}, outsider)).status, 200);
+  assert.equal((await request(API_ROUTES.room(id), 'GET', undefined, outsider)).status, 404);
+  socket.disconnect();
+});
+
+test('게스트가 나가도 메시지는 보존되고 방장이 혼자 나가면 미사용 초대도 취소된다', async () => {
+  const id = await room(); const visitor = await guest(id); const message = await send(id, visitor, '나가기 전 기록');
+  const pending = invitationResultSchema.parse(await (await request(API_ROUTES.invitations(id), 'POST', { email: randomUUID() + '@example.com' }, owner)).json());
+  const left = await request(API_ROUTES.leaveRoom(id, 'GUEST'), 'POST', {}, visitor);
+  assert.equal(left.status, 200); assert.ok(left.headers.getSetCookie()[0]?.includes('Expires=Thu, 01 Jan 1970'));
+  assert.equal((await list(id, owner)).items[0]?.messageId, message.messageId);
+  assert.equal((await request(API_ROUTES.participants(id, 'GUEST'), 'GET', undefined, visitor)).status, 401);
+  assert.equal((await request(API_ROUTES.leaveRoom(id, 'MEMBER'), 'POST', {}, owner)).status, 200);
+  assert.equal((await request(API_ROUTES.room(id), 'GET', undefined, owner)).status, 404);
+  const token = new URLSearchParams(new URL(pending.invitationUrl).hash.slice(1)).get('token');
+  assert.equal((await request(API_ROUTES.acceptInvitation, 'POST', { token, displayName: '다시 입장' })).status, 410);
+});
+
+test('읽음 위치는 동시·역순 요청에도 감소하지 않고 실제 방의 순번까지만 허용한다', async () => {
+  const id = await room(); const visitor = await guest(id);
+  for (let n = 1; n <= 6; n++) await send(id, owner, '읽음 메시지 ' + n);
+  const socket = await socketFor(id, owner); await join(socket, id);
+  const updated = event<ReadUpdate>(socket, 'message:read-updated');
+  const read = (seq: number, auth: Auth = visitor) => request(path(id, auth) + '/read', 'POST', { roomId: id, lastReadSeq: seq }, auth);
+  assert.equal((await read(3)).status, 200);
+  assert.deepEqual(await updated, { roomId: id, memberId: visitor.session.participant.id, lastReadSeq: 3 });
+  await Promise.all([read(6), read(2), read(5)]);
+  assert.equal((await list(id, visitor)).participant.lastReadSeq, 6);
+  assert.equal((await read(7)).status, 400);
+  assert.equal((await read(-1)).status, 400);
+  assert.equal((await read(2, outsider)).status, 404);
+  assert.equal((await request(path(id, visitor) + '/read', 'POST', { roomId: randomUUID(), lastReadSeq: 1 }, visitor)).status, 403);
+  assert.equal((await request(path(id, visitor) + '/read', 'POST', { roomId: id, lastReadSeq: 1 }, visitor, { 'X-CSRF-Token': '' })).status, 403);
+  const ws = await socket.timeout(3000).emitWithAck('message:read', { roomId: id, lastReadSeq: 6 }) as Ack<void>;
+  assert.equal(ws.ok, true); assert.equal((await list(id, owner)).participant.lastReadSeq, 6);
+  socket.disconnect();
+});
+
+test('대화 목록은 마지막 메시지·안 읽은 개수를 계산하고 열지 않은 방도 실시간 갱신한다', async () => {
+  const id = await room(); const visitor = await guest(id); const other = await room();
+  const socket = await socketFor(id, owner);
+  const subscribed = await socket.timeout(3000).emitWithAck('rooms:subscribe', { csrfToken: owner.session.csrfToken }) as Ack<void>; assert.equal(subscribed.ok, true);
+  const changed = event<{ roomId: string }>(socket, 'room:updated');
+  const message = await send(id, visitor, '목록에 보이는 새 메시지'); assert.equal((await changed).roomId, id);
+  await send(id, owner, '내 메시지는 안 읽은 개수에서 제외');
+  const rooms = roomListSchema.parse(await (await request(API_ROUTES.rooms, 'GET', undefined, owner)).json());
+  const item = rooms.find((item) => item.id === id)!;
+  assert.equal(item.unreadCount, 1); assert.equal(item.lastMessage?.seq, 2); assert.equal(rooms[0]?.id, id);
+  assert.ok(rooms.some((item) => item.id === other));
+  assert.equal((await request(API_ROUTES.messages(id) + '/read', 'POST', { roomId: id, lastReadSeq: message.seq }, owner)).status, 200);
+  const detail = roomSchema.parse(await (await request(API_ROUTES.room(id), 'GET', undefined, owner)).json()); assert.equal(detail.unreadCount, 0);
+  const otherSocket = await socketFor(id, outsider);
+  assert.equal((await otherSocket.timeout(3000).emitWithAck('rooms:subscribe', { csrfToken: outsider.session.csrfToken })).ok, true);
+  const leaked: unknown[] = []; otherSocket.on('room:updated', (value) => leaked.push(value));
+  await send(id, visitor, '다른 회원에게 유출하지 않음'); assert.equal(leaked.length, 0);
+  const badSocket = await socketFor(id, owner, { origin: 'https://evil.example' });
+  assert.equal((await badSocket.timeout(3000).emitWithAck('rooms:subscribe', { csrfToken: owner.session.csrfToken })).ok, false);
+  socket.disconnect(); otherSocket.disconnect(); badSocket.disconnect();
+});
+
+test('검색은 같은 방의 한글·대소문자·특수문자를 찾고 페이지와 주변 대화를 제공한다', async () => {
+  const id = await room(); const visitor = await guest(id);
+  const member = (await list(id, owner)).participant.id;
+  await client.query("INSERT INTO messages (id, room_id, sender_member_id, client_message_id, seq, body) SELECT gen_random_uuid(), $1, $2, gen_random_uuid(), n, '검색 Hello ' || n FROM generate_series(1, 45) n", [id, member]);
+  await client.query('UPDATE chat_rooms SET last_seq = 45 WHERE id = $1', [id]);
+  await send(id, owner, '문자 %_\\ 포함');
+  const search = (q: string, query = '') => path(id, visitor) + '/search?q=' + encodeURIComponent(q) + query;
+  const first = messageSearchPageSchema.parse(await (await request(search('hello'), 'GET', undefined, visitor)).json());
+  assert.equal(first.items.length, 20); assert.equal(first.hasMore, true); assert.equal(first.items[0]?.seq, 45);
+  const second = messageSearchPageSchema.parse(await (await request(search('검색', '&beforeSeq=26'), 'GET', undefined, visitor)).json());
+  assert.equal(second.items[0]?.seq, 25); assert.ok(second.items.every((item) => !first.items.some((old) => old.messageId === item.messageId)));
+  const literal = messageSearchPageSchema.parse(await (await request(search('%_\\'), 'GET', undefined, visitor)).json()); assert.equal(literal.items.length, 1);
+  assert.equal((await request(search(' ', '&limit=51'), 'GET', undefined, visitor)).status, 400);
+  assert.equal((await request(API_ROUTES.messages(id) + '/search?q=hello', 'GET', undefined, outsider)).status, 404);
+  assert.equal((await request(API_ROUTES.guestMessages(await room()) + '/search?q=hello', 'GET', undefined, visitor)).status, 401);
+  const around = await list(id, visitor, '?aroundSeq=20&limit=10'); assert.deepEqual(around.items.map((item) => item.seq), [16,17,18,19,20,21,22,23,24,25]);
+  assert.equal((await request(path(id, visitor) + '?aroundSeq=20&afterSeq=1', 'GET', undefined, visitor)).status, 400);
+});
+
+async function upload(roomId: string, auth: Auth, name: string, bytes: Uint8Array, type = 'text/plain', id = randomUUID(), headers: Record<string, string> = {}) {
+  const body = new FormData(); body.set('clientMessageId', id); body.set('file', new Blob([new Uint8Array(bytes)], { type }), name);
+  return fetch(base + API_ROUTES.files(roomId, auth.kind), { method: 'POST', body,
+    headers: { Origin: webOrigin, Cookie: auth.cookie, 'X-CSRF-Token': auth.session.csrfToken, ...headers } });
+}
+
+test('파일 전송은 메시지와 함께 저장하고 재시도는 한 번만 저장하며 참여자만 다운로드한다', async () => {
+  const id = await room(), other = await room(); const visitor = await guest(id); const clientId = randomUUID();
+  const response = await upload(id, owner, '회의 안내.txt', Buffer.from('파일 내용'), 'text/plain', clientId);
+  assert.equal(response.status, 200, await response.clone().text());
+  const message = messageSchema.parse(await response.json()); const attachment = message.attachments[0]!;
+  assert.equal(attachment.filename, '회의 안내.txt'); assert.equal(message.seq, 1); assert.ok(!JSON.stringify(message).includes('objectKey'));
+  const count = objects.size;
+  const retry = await upload(id, owner, '회의 안내.txt', Buffer.from('파일 내용'), 'text/plain', clientId);
+  assert.equal(retry.status, 200); assert.equal(messageSchema.parse(await retry.json()).messageId, message.messageId); assert.equal(objects.size, count);
+  const guestPath = API_ROUTES.files(id, 'GUEST') + '/' + attachment.id;
+  const file = await request(guestPath, 'GET', undefined, visitor); assert.equal(file.status, 200); assert.equal(await file.text(), '파일 내용');
+  assert.equal(file.headers.get('x-content-type-options'), 'nosniff'); assert.match(file.headers.get('content-disposition')!, /^attachment;/);
+  assert.equal((await request(API_ROUTES.files(id, 'MEMBER') + '/' + attachment.id, 'GET', undefined, outsider)).status, 404);
+  assert.equal((await request(API_ROUTES.files(other, 'GUEST') + '/' + attachment.id, 'GET', undefined, visitor)).status, 401);
+  assert.equal((await request(guestPath)).status, 401);
+  assert.equal((await upload(id, owner, '회의 안내.txt', Buffer.from('다른 내용'), 'text/plain', clientId)).status, 409); assert.equal(objects.size, count);
+  assert.equal((await list(id, visitor)).items[0]?.attachments[0]?.id, attachment.id);
+  await request(API_ROUTES.removeParticipant(id, visitor.session.participant.id), 'POST', {}, owner);
+  assert.equal((await request(guestPath, 'GET', undefined, visitor)).status, 401);
+});
+
+test('이미지 미리보기는 형식을 검증하고 실제 전송 내용을 실시간으로 제공한다', async () => {
+  const id = await room(); const visitor = await guest(id); const socket = await socketFor(id, owner); await join(socket, id);
+  const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMWQAAAAASUVORK5CYII=', 'base64');
+  const incoming = event<Message>(socket, 'message:new');
+  const uploaded = await upload(id, visitor, '사진.png', bytes, 'image/png'); assert.equal(uploaded.status, 200, await uploaded.clone().text());
+  const message = messageSchema.parse(await incoming); const file = message.attachments[0]!;
+  const preview = await request(API_ROUTES.files(id, 'MEMBER') + '/' + file.id + '?preview=1', 'GET', undefined, owner);
+  assert.equal(preview.status, 200); assert.equal(preview.headers.get('content-type'), 'image/png'); assert.match(preview.headers.get('content-disposition')!, /^inline;/);
+  assert.deepEqual(Buffer.from(await preview.arrayBuffer()), bytes); socket.disconnect();
+});
+
+test('파일은 크기·형식·인증·CSRF·출처를 검사하고 실패 시 메시지와 파일을 남기지 않는다', async () => {
+  const id = await room(); const visitor = await guest(id); const count = objects.size;
+  assert.equal((await upload(id, owner, 'fake.png', Buffer.from('<script>'), 'image/png')).status, 400);
+  assert.equal((await upload(id, owner, 'empty.txt', Buffer.alloc(0))).status, 400);
+  assert.equal((await upload(id, owner, 'too-large.txt', Buffer.alloc(MAX_ATTACHMENT_SIZE + 1, 65))).status, 413);
+  assert.equal((await upload(id, owner, 'ok.txt', Buffer.from('hello'), 'text/plain', randomUUID(), { 'X-CSRF-Token': '' })).status, 403);
+  assert.equal((await upload(id, owner, 'ok.txt', Buffer.from('hello'), 'text/plain', randomUUID(), { Origin: 'https://evil.example' })).status, 403);
+  assert.equal((await upload(id, outsider, 'ok.txt', Buffer.from('hello'))).status, 404);
+  assert.equal((await upload(await room(), visitor, 'ok.txt', Buffer.from('hello'))).status, 401);
+  const clientId = randomUUID(); storageFailure = true;
+  try { assert.equal((await upload(id, owner, 'ok.txt', Buffer.from('hello'), 'text/plain', clientId)).status, 503); }
+  finally { storageFailure = false; }
+  assert.equal(objects.size, count); assert.equal((await list(id, owner)).lastSeq, 0);
+  assert.equal((await upload(id, owner, 'ok.txt', Buffer.from('hello'), 'text/plain', clientId)).status, 200);
+});
+
+test('업로드 중 참여 권한이 취소되면 파일을 정리하고 메시지를 저장하지 않는다', async () => {
+  const id = await room(); const visitor = await guest(id); const count = objects.size;
+  beforePut = async () => { await client.query('UPDATE room_members SET left_at = CURRENT_TIMESTAMP WHERE id = $1', [visitor.session.participant.id]); };
+  try { assert.equal((await upload(id, visitor, '취소.txt', Buffer.from('저장 금지'))).status, 404); }
+  finally { beforePut = undefined; }
+  assert.equal(objects.size, count); assert.equal((await list(id, owner)).lastSeq, 0);
 });

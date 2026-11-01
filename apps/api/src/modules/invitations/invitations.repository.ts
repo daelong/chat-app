@@ -56,6 +56,9 @@ export class InvitationsRepository {
 
   async accept(tokenHash: string, displayName: string, session: { tokenHash: string; expiresAt: Date }, previousTokenHash?: string) {
     return this.prisma.$transaction(async (transaction) => {
+      const scope = await transaction.invitation.findUnique({ where: { tokenHash }, select: { roomId: true } });
+      if (!scope) throw new NotFoundException({ message: '유효한 초대 링크를 확인해 주세요.' });
+      await transaction.chatRoom.update({ where: { id: scope.roomId }, data: { lastSeq: { increment: 0 } }, select: { id: true } });
       // 같은 값을 쓰는 UPDATE로 행을 잠급니다. Prisma가 테스트·운영 스키마를 동일하게 처리합니다.
       await transaction.invitation.updateMany({ where: { tokenHash }, data: { tokenHash } });
       const invitation = await transaction.invitation.findUnique({ where: { tokenHash }, include: { room: { include: { members: {

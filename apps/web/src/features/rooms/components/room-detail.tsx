@@ -13,7 +13,7 @@ export function RoomDetail({ roomId }: { roomId: string }) {
   const { data: session } = useMemberSession();
   const room = useQuery({
     queryKey: ['room', session?.user.id, roomId], queryFn: ({ signal }) => getRoom(roomId, signal),
-    enabled: !!session, retry: false,
+    enabled: !!session, retry: false, refetchInterval: 15_000,
   });
   if (room.isPending) return <p role="status" className="text-slate-500">채팅방을 불러오고 있어요.</p>;
   if (!room.data || (room.isError && room.error instanceof ApiError && [401, 403, 404].includes(room.error.status))) return <div>

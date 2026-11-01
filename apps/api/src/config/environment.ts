@@ -19,7 +19,13 @@ export const environmentSchema = z.object({
   SMTP_USER: z.string().optional().transform((value) => value || undefined),
   SMTP_PASSWORD: z.string().optional().transform((value) => value || undefined),
   MAIL_FROM: z.email().default('chat@localhost.test'),
+  S3_ENDPOINT: z.url().optional(),
+  S3_REGION: z.string().min(1).default('us-east-1'),
+  S3_BUCKET: z.string().regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/).default('chat-attachments'),
+  S3_ACCESS_KEY: z.string().min(1).optional(),
+  S3_SECRET_KEY: z.string().min(1).optional(),
 }).superRefine((value, context) => {
+  if (!!value.S3_ACCESS_KEY !== !!value.S3_SECRET_KEY) context.addIssue({ code: 'custom', path: ['S3_ACCESS_KEY'], message: '저장소 인증 정보를 함께 지정하세요.' });
   const inviteOrigin = URL.parse(value.INVITE_WEB_ORIGIN ?? value.WEB_ORIGINS[0]!);
   if (!inviteOrigin || !value.WEB_ORIGINS.includes(inviteOrigin.origin) || inviteOrigin.href !== inviteOrigin.origin + '/' ||
     (value.MAIL_MODE !== 'disabled' && inviteOrigin.protocol !== 'https:' && !(value.NODE_ENV !== 'production' && inviteOrigin.protocol === 'http:' &&

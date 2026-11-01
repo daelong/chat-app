@@ -1,29 +1,42 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../infra/database/prisma.service';
 
+const include = (userId: string) => ({ members: { where: { userId, leftAt: null } },
+  messages: { orderBy: { seq: 'desc' as const }, take: 1, include: { sender: { select: { displayName: true } }, attachments: { select: { id: true } } } },
+  _count: { select: { members: { where: { leftAt: null } } } },
+});
 @Injectable()
 export class RoomsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(name: string, userId: string, displayName: string) {
-    return this.prisma.chatRoom.create({
+  async create(name: string, userId: string, displayName: string) {
+    const room = await this.prisma.chatRoom.create({
       data: { name, type: 'GROUP', members: { create: { userId, displayName, kind: 'MEMBER', role: 'OWNER' } } },
-      include: { members: true, _count: { select: { members: { where: { leftAt: null } } } } },
+      include: include(userId),
     });
+    return { ...room, unreadCount: 0 };
   }
 
-  list(userId: string) {
-    return this.prisma.chatRoom.findMany({
+  async list(userId: string) {
+    return this.prisma.$transaction(async (transaction) => {
+      const rooms = await transaction.chatRoom.findMany({
       where: { members: { some: { userId, kind: 'MEMBER', leftAt: null } } },
-      include: { members: { where: { userId, leftAt: null } }, _count: { select: { members: { where: { leftAt: null } } } } },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      include: include(userId),
+      orderBy: [{ lastActivityAt: 'desc' }, { id: 'desc' }],
     });
+      return Promise.all(rooms.map(async (room) => ({ ...room, unreadCount: await transaction.message.count({
+        where: { roomId: room.id, seq: { gt: room.members[0]!.lastReadSeq }, senderMemberId: { not: room.members[0]!.id } },
+      }) })));
+    }, { isolationLevel: 'RepeatableRead' });
   }
 
-  findForMember(id: string, userId: string) {
-    return this.prisma.chatRoom.findFirst({
+  async findForMember(id: string, userId: string) {
+    const room = await this.prisma.chatRoom.findFirst({
       where: { id, members: { some: { userId, kind: 'MEMBER', leftAt: null } } },
-      include: { members: { where: { userId, leftAt: null } }, _count: { select: { members: { where: { leftAt: null } } } } },
+      include: include(userId),
     });
+    if (!room) return null;
+    return { ...room, unreadCount: await this.prisma.message.count({ where: { roomId: id,
+      seq: { gt: room.members[0]!.lastReadSeq }, senderMemberId: { not: room.members[0]!.id } } }) };
   }
 }

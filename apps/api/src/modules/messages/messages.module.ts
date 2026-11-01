@@ -8,5 +8,6 @@ import { GuestMessagesController, MemberMessagesController } from './messages.co
 import { MessagesGateway } from './messages.gateway';
 
 @Module({ imports: [AuthModule], controllers: [MemberMessagesController, GuestMessagesController],
-  providers: [RoomAccessService, MessagesRepository, MessageBroadcaster, MessagesService, MessagesGateway] })
+  providers: [RoomAccessService, MessagesRepository, MessageBroadcaster, MessagesService, MessagesGateway],
+  exports: [RoomAccessService, MessagesRepository, MessageBroadcaster] })
 export class MessagesModule {}

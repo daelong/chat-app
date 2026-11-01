@@ -20,5 +20,9 @@ export const API_ROUTES = {
   acceptInvitation: `${API_PREFIX}/invitations/accept`,
   guestRoom: (roomId: string) => `${API_PREFIX}/guest/rooms/${encodeURIComponent(roomId)}`,
   guestMessages: (roomId: string) => `${API_PREFIX}/guest/rooms/${encodeURIComponent(roomId)}/messages`,
+  participants: (roomId: string, kind: 'MEMBER' | 'GUEST') => `${API_PREFIX}/${kind === 'GUEST' ? 'guest/' : ''}rooms/${encodeURIComponent(roomId)}/participants`,
+  leaveRoom: (roomId: string, kind: 'MEMBER' | 'GUEST') => `${API_PREFIX}/${kind === 'GUEST' ? 'guest/' : ''}rooms/${encodeURIComponent(roomId)}/leave`,
+  removeParticipant: (roomId: string, memberId: string) => `${API_PREFIX}/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(memberId)}/remove`,
+  files: (roomId: string, kind: 'MEMBER' | 'GUEST') => `${API_PREFIX}/${kind === 'GUEST' ? 'guest/' : ''}rooms/${encodeURIComponent(roomId)}/files`,
 } as const;
 export const CHAT_NAMESPACE = '/chat';

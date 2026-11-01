@@ -8,6 +8,7 @@ import { GUEST_SESSION_LIFETIME_MS, readGuestToken, writeGuestCookie } from '../
 import { GuestsService } from '../guests/guests.service';
 import { InvitationMailer } from './invitation-mailer';
 import { InvitationsRepository } from './invitations.repository';
+import { MessageBroadcaster } from '../messages/message-broadcaster';
 
 export const INVITATION_LIFETIME_MS = 48 * 60 * 60 * 1000;
 export function invitationStatus(invitation: Pick<StoredInvitation, 'acceptedAt' | 'revokedAt' | 'expiresAt'>): Invitation['status'] {
@@ -23,7 +24,7 @@ function view(invitation: StoredInvitation): Invitation {
 @Injectable()
 export class InvitationsService {
   constructor(private readonly repository: InvitationsRepository, private readonly mailer: InvitationMailer,
-    private readonly guests: GuestsService, @Inject(APP_ENVIRONMENT) private readonly environment: Environment) {}
+    private readonly guests: GuestsService, private readonly broadcaster: MessageBroadcaster, @Inject(APP_ENVIRONMENT) private readonly environment: Environment) {}
 
   private async ownerRoom(roomId: string, userId: string) {
     const room = await this.repository.ownerRoom(roomId, userId);
@@ -85,6 +86,7 @@ export class InvitationsService {
       { tokenHash: hashSessionToken(token), expiresAt: new Date(Date.now() + GUEST_SESSION_LIFETIME_MS) }, previous ? hashSessionToken(previous) : undefined);
     const activeToken = accepted.resumed ? previous! : token;
     writeGuestCookie(response, accepted.roomId, activeToken, accepted.expiresAt, this.environment);
+    if (!accepted.resumed) await this.broadcaster.changed(accepted.roomId, undefined, true);
     return this.guests.authenticate(accepted.roomId, activeToken);
   }
 }

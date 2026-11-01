@@ -25,9 +25,7 @@ export class RoomAccessService {
     let memberId: string | undefined;
     let userId: string | undefined;
     if (identity.kind === 'MEMBER') {
-      const session = await database.memberSession.findUnique({ where: { tokenHash: identity.tokenHash }, select: { userId: true, expiresAt: true } });
-      if (!session || session.expiresAt.getTime() <= Date.now()) throw new UnauthorizedException({ message: '로그인이 만료되었습니다. 다시 로그인해 주세요.' });
-      userId = session.userId;
+      userId = await this.memberUser(identity.tokenHash, database);
     } else {
       const session = await database.guestSession.findUnique({ where: { tokenHash: identity.tokenHash }, select: { memberId: true, roomId: true, expiresAt: true } });
       if (!session || session.roomId !== identity.roomId || session.expiresAt.getTime() <= Date.now()) {
@@ -38,8 +36,14 @@ export class RoomAccessService {
     const member = await database.roomMember.findFirst({ where: {
       roomId: identity.roomId, kind: identity.kind, leftAt: null,
       ...(userId ? { userId } : { id: memberId! }),
-    }, select: { id: true, displayName: true, kind: true } });
+    }, select: { id: true, displayName: true, kind: true, role: true, lastReadSeq: true } });
     if (!member) throw new NotFoundException({ message: '방이 없거나 현재 참여 권한이 없습니다.' });
-    return member;
+    return { ...member, lastReadSeq: Number(member.lastReadSeq) };
+  }
+
+  async memberUser(tokenHash: string, database: Prisma.TransactionClient = this.prisma) {
+    const session = await database.memberSession.findUnique({ where: { tokenHash }, select: { userId: true, expiresAt: true } });
+    if (!session || session.expiresAt.getTime() <= Date.now()) throw new UnauthorizedException({ message: '로그인이 만료되었습니다. 다시 로그인해 주세요.' });
+    return session.userId;
   }
 }

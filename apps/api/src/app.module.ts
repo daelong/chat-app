@@ -9,6 +9,7 @@ import { RoomsModule } from './modules/rooms/rooms.module';
 import { UsersModule } from './modules/users/users.module';
 import { GuestsModule } from './modules/guests/guests.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 
-@Module({ imports: [ConfigModule, DatabaseModule, HealthModule, AuthModule, UsersModule, RoomsModule, GuestsModule, InvitationsModule, MessagesModule, RealtimeModule] })
+@Module({ imports: [ConfigModule, DatabaseModule, HealthModule, AuthModule, UsersModule, RoomsModule, GuestsModule, InvitationsModule, MessagesModule, AttachmentsModule, RealtimeModule] })
 export class AppModule {}

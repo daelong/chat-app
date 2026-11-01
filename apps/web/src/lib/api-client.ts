@@ -4,7 +4,7 @@ export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
 
-async function parseResponse<T>(response: Response, schema: ZodType<T>): Promise<T> {
+export async function parseResponse<T>(response: Response, schema: ZodType<T>): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => null) as { error?: { message?: unknown } } | null;
     throw new ApiError(response.status, typeof body?.error?.message === 'string'

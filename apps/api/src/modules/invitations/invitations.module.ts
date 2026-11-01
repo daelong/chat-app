@@ -6,7 +6,8 @@ import { InvitationMailer } from './invitation-mailer';
 import { PublicInvitationsController, RoomInvitationsController } from './invitations.controller';
 import { InvitationsRepository } from './invitations.repository';
 import { InvitationsService } from './invitations.service';
+import { MessagesModule } from '../messages/messages.module';
 
-@Module({ imports: [AuthModule, GuestsModule], controllers: [RoomInvitationsController, PublicInvitationsController],
+@Module({ imports: [AuthModule, GuestsModule, MessagesModule], controllers: [RoomInvitationsController, PublicInvitationsController],
   providers: [InvitationsRepository, InvitationsService, InvitationMailer, CredentialRateGuard] })
 export class InvitationsModule {}

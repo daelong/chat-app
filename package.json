@@ -14,6 +14,8 @@
     "db:down": "docker compose -f infra/compose.yml down",
     "mail:up": "docker compose -f infra/compose.yml up -d mailpit",
     "mail:stop": "docker compose -f infra/compose.yml stop mailpit",
+    "storage:up": "docker compose -f infra/compose.yml up -d --wait storage",
+    "storage:stop": "docker compose -f infra/compose.yml stop storage",
     "db:generate": "pnpm --filter @chat/api db:generate",
     "db:migrate": "pnpm --filter @chat/api db:migrate",
     "db:deploy": "pnpm --filter @chat/api db:deploy",

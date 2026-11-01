@@ -6,7 +6,7 @@ Next.js 웹, Expo 모바일, NestJS API를 함께 관리하는 pnpm 모노레포
 
 핵심 제품 요구사항은 **이메일 초대를 수락하면 회원가입 없이 해당 채팅방에만 참여할 수 있는 것**입니다. **방 생성은 로그인한 회원, 초대 발송은 해당 방의 방장만 가능**합니다. 초대 생성·발송·재전송·취소와 방 전용 게스트 입장이 구현되어 있습니다. 상세 정책은 [docs/invitation-flow.md](docs/invitation-flow.md)에 정리했습니다.
 
-현재 구현 범위는 **웹 회원 인증·구글 로그인, 방 생성·조회, 이메일 초대·게스트 입장, 회원과 게스트의 실시간 텍스트 채팅**입니다. 구글 로그인과 실제 외부 이메일 발송에는 서비스 설정이 필요합니다. 로컬 초대 메일은 Mailpit에서 확인합니다. 모바일 인증·대화 화면 연결은 아직 구현 전입니다. Spring Boot/Vite 실행 명령은 더 이상 사용하지 않습니다.
+현재 구현 범위는 **웹 회원 인증·구글 로그인, 방 생성·조회, 이메일 초대·게스트 입장, 실시간 채팅, 참여자 관리, 읽음·안 읽은 개수, 파일 전송과 대화 검색**입니다. 구글 로그인과 실제 외부 이메일 발송에는 서비스 설정이 필요합니다. 로컬 초대 메일은 Mailpit, 파일 저장소는 RustFS를 사용합니다. 모바일 인증·대화 화면 연결은 아직 구현 전입니다. Spring Boot/Vite 실행 명령은 더 이상 사용하지 않습니다.
 
 ## 구성
 
@@ -18,9 +18,9 @@ Next.js 웹, Expo 모바일, NestJS API를 함께 관리하는 pnpm 모노레포
 | packages/contracts | Zod 요청·응답 검증 스키마, REST 경로, 소켓 이벤트 타입 |
 | packages/utils | 플랫폼에 의존하지 않는 공통 함수 |
 | packages/config | 공통 TypeScript 설정 |
-| infra | 로컬 PostgreSQL·Mailpit, API Docker 이미지와 Compose |
+| infra | 로컬 PostgreSQL·Mailpit·RustFS, API Docker 이미지와 Compose |
 
-웹과 모바일은 각각 components/ui → features → widgets → 페이지 구조를 사용합니다. UI는 플랫폼별로 구현하고 데이터 계약을 공유합니다. 서버의 auth/rooms에는 Controller → Service → Repository를 적용했고, users는 인증된 계정 조회를 제공합니다. messages는 모듈 경계만 등록되어 있습니다.
+웹과 모바일은 각각 components/ui → features → widgets → 페이지 구조를 사용합니다. UI는 플랫폼별로 구현하고 데이터 계약을 공유합니다. 서버는 기능별 Controller·Service·Repository를 사용하며, messages는 채팅 권한·저장·실시간 이벤트, attachments는 파일 검증·비공개 저장소 접근을 담당합니다.
 
 ## 현재 구현된 것
 
@@ -32,6 +32,11 @@ Next.js 웹, Expo 모바일, NestJS API를 함께 관리하는 pnpm 모노레포
 - 초대 링크에서 표시 이름만 입력하는 게스트 입장, 해당 방으로 제한된 7일 세션과 새로고침 후 복원.
 - 회원·게스트의 메시지 작성·저장·이전 내역 조회와 실시간 송수신. 작성자 표시·시간·줄바꿈·전송 실패 재시도를 제공합니다.
 - 같은 메시지 ID의 재전송 중복 방지, 재연결 시 순번 기반 누락분 복구와 화면 중복 제거.
+- 참여자 목록과 회원·게스트·방장 구분, 나가기, 방장의 참여자 내보내기. 방장은 다른 참여자가 모두 나간 뒤 나갈 수 있습니다. 대화 기록은 보존하고 퇴장자의 방·메시지·파일 접근과 소켓 수신은 차단합니다.
+- 화면에 보인 메시지까지 읽음 위치 저장, 역순·중복 요청 시 위치 유지, 마지막 읽은 곳 복원과 안 읽은 개수. 본인이 보낸 메시지는 목록의 안 읽은 개수에서 제외합니다.
+- 채팅방 목록의 마지막 메시지·시각·안 읽은 배지·최근 대화순 정렬. 별도 회원 소켓 구독으로 열지 않은 방도 갱신하고 조회 주기로 누락분을 복구합니다.
+- 이미지·PDF·UTF-8 TXT·ZIP 전송과 다운로드. 한 메시지에 파일 하나, 파일당 10MB이며 확장자·MIME·실제 내용의 형식을 확인합니다. 이미지 미리보기, 전송 실패 재시도와 같은 전송 ID의 중복 방지를 지원합니다.
+- 같은 방 안에서 한글·대소문자 구분 없는 부분 문자열 검색, 검색 결과 페이지와 해당 메시지 주변으로 이동. 파일 이름도 검색합니다.
 - 모바일 시작 화면과 로그인/대화 준비 화면의 라우트. 모바일 인증은 별도 구현 대상입니다.
 - TanStack Query를 이용한 API·DB 연결 상태 조회와 재조회.
 - Socket.IO 연결, system:ping 입력 검증과 ack, 화면 종료 시 연결 해제.
@@ -41,7 +46,19 @@ Next.js 웹, Expo 모바일, NestJS API를 함께 관리하는 pnpm 모노레포
 - room_members의 독립 ID와 MEMBER/GUEST 구분. 게스트는 user_id 없이 초대 수락 시 생성합니다.
 - 메시지는 같은 방의 참여자를 sender_member_id로 참조하며, 순서와 재전송 ID의 고유 제약을 유지합니다.
 
-아직 구현되지 않은 것: 읽음 처리, 파일 첨부, 푸시, 모바일 인증·채팅 연결. 공유 계약의 message:read와 message:read-updated는 후속 구현입니다. 현재 채팅 이벤트는 room:join, room:leave, message:send, message:new, chat:access-revoked를 제공합니다.
+아직 구현되지 않은 것: 게스트 참여를 회원 계정에 연결, 푸시, 모바일 인증·채팅 연결, 방장 권한 이전. 현재 채팅 이벤트는 room:join, room:leave, message:send, message:new, message:read, message:read-updated, room:participants-updated, chat:access-revoked를 제공하며 목록은 rooms:subscribe와 room:updated를 사용합니다. room:leave는 실시간 구독 해제이며 실제 방 나가기는 REST /leave입니다.
+
+## 파일 저장소와 채팅 정책
+
+로컬에서는 `pnpm storage:up`으로 S3 호환 RustFS를 실행합니다. 파일은 Docker의 `attachments_data` 볼륨, 파일 이름·크기·형식·해시는 PostgreSQL의 `attachments`에 저장합니다. 개발 환경에서는 최초 업로드 시 비공개 `chat-attachments` 버킷을 만듭니다. [RustFS 공식 실행 문서](https://docs.rustfs.com/en/installation/container/docker)를 참고하세요.
+
+파일은 공개 URL이나 presigned URL로 노출하지 않고 회원/게스트별 API를 통과해 내려받습니다. 다운로드·미리보기마다 현재 방의 세션과 참여 권한을 확인합니다. HTML·SVG·실행 파일은 지원하지 않으며 이미지 이외의 파일은 다운로드로 제공합니다. 파일 형식 검사는 바이러스 검사를 대체하지 않으며, 운영 공개 전 악성 파일 검사와 저장 용량·업로드 요청 제한을 추가해야 합니다.
+
+운영은 미리 생성한 비공개 버킷과 `S3_REGION`, `S3_BUCKET`, 필요 시 `S3_ENDPOINT`·`S3_ACCESS_KEY`·`S3_SECRET_KEY`를 설정합니다. AWS에서는 기본 자격 증명 체인/IAM 역할도 사용할 수 있습니다. Compose의 app 프로필은 로컬 저장소를 사용하지만 NODE_ENV=production이므로 최초 버킷은 관리 화면에서 생성해야 합니다. 저장소 접근 키를 NEXT_PUBLIC_ 환경변수에 넣지 않습니다.
+
+메시지 저장과 첨부 메타데이터는 하나의 DB 트랜잭션으로 처리합니다. 저장 실패와 중복 업로드의 임시 오브젝트는 삭제합니다. 저장소 업로드 직후 프로세스가 강제 종료되는 경우의 고아 오브젝트 정리는 운영 후속 작업입니다. 파일 내용 검색·첨부 삭제·바이러스 검사는 이번 범위에 포함하지 않습니다.
+
+읽음은 메시지의 끝부분이 화면에 보일 때만 갱신하고 숨겨진 탭에서는 갱신하지 않습니다. 검색은 방과 순번으로 제한한 PostgreSQL 부분 문자열 조회이며 별도 검색 엔진·전문 검색 인덱스는 아직 사용하지 않습니다. 게스트는 같은 방의 입장 전 대화도 조회·검색할 수 있습니다.
 
 ## 회원 인증과 참여 모델
 
@@ -140,7 +157,7 @@ SMTP 서버가 수신자를 접수하면 '메일 서버 접수 완료'로 표시
 
 ## 메시지와 실시간 채팅
 
-회원은 방 상세, 게스트는 초대받은 방에서 같은 대화 화면을 사용합니다. 현재 참여자는 입장 전 대화를 포함한 해당 방의 전체 내역을 조회할 수 있습니다. 최근 30개를 표시하고 '이전 대화 더 보기'로 과거 내역을 추가 조회합니다. 메시지는 1~4000자이며 Enter로 전송하고 Shift+Enter로 줄을 바꿉니다. 한글 조합 중 Enter는 전송하지 않습니다.
+회원은 방 상세, 게스트는 초대받은 방에서 같은 대화 화면을 사용합니다. 현재 참여자는 입장 전 대화를 포함한 해당 방의 전체 내역을 조회할 수 있습니다. 기본 최근 30개를 표시하고 마지막 읽은 위치가 있으면 그 주변과 이후 대화를 복원합니다. '이전 대화 더 보기'와 검색 이동 후의 '사이 대화 더 보기'로 내역을 추가 조회합니다. 메시지는 1~4000자이며 Enter로 전송하고 Shift+Enter로 줄을 바꿉니다. 한글 조합 중 Enter는 전송하지 않습니다.
 
 | 경로 또는 이벤트 | 역할 |
 | --- | --- |
@@ -148,13 +165,22 @@ SMTP 서버가 수신자를 접수하면 '메일 서버 접수 완료'로 표시
 | POST /api/v1/rooms/:roomId/messages | 회원의 메시지 저장·전송 |
 | GET /api/v1/guest/rooms/:roomId/messages | 해당 방 게스트의 대화 내역 조회 |
 | POST /api/v1/guest/rooms/:roomId/messages | 해당 방 게스트의 메시지 저장·전송 |
+| GET /api/v1/rooms/:roomId/participants | 현재 참여자·역할·읽음 위치 조회 |
+| POST /api/v1/rooms/:roomId/leave | 실제 방 나가기 |
+| POST /api/v1/rooms/:roomId/participants/:memberId/remove | 방장의 참여자 내보내기 |
+| POST /api/v1/rooms/:roomId/messages/read | lastReadSeq 저장 |
+| GET /api/v1/rooms/:roomId/messages/search | q와 beforeSeq를 이용한 검색 |
+| POST /api/v1/rooms/:roomId/files | file·clientMessageId의 multipart 파일 전송 |
+| GET /api/v1/rooms/:roomId/files/:id | 파일 다운로드, 이미지 preview=1 |
 | room:join / room:leave | 인증된 현재 방의 실시간 구독·해제 |
 | message:send / message:new | 저장 후 확인 응답과 실시간 수신 |
 | chat:access-revoked | 만료·퇴장·로그아웃으로 구독 권한이 없어진 경우 안내 |
 
-조회는 beforeSeq 또는 afterSeq 중 하나와 limit(기본 30, 최대 100)을 받으며, 응답 items는 순번 오름차순입니다. lastSeq는 같은 DB 스냅샷의 방 순번입니다. 프론트엔드는 실시간 이벤트의 최댓값을 복구 커서로 사용하지 않고, REST에서 확인한 순번부터 누락분을 끝까지 가져와 이벤트 도착 순서가 엇갈려도 메시지를 빠뜨리지 않습니다.
+내보내기를 제외한 참여자·나가기·읽음·검색·파일 API는 `/api/v1/guest/rooms/:roomId/...`에서도 동일하게 제공하며 해당 방의 게스트 쿠키를 요구합니다. 쓰기 요청은 Origin·CSRF도 검사합니다.
 
-저장은 방 행을 잠근 트랜잭션에서 현재 세션·참여 권한 확인, 중복 ID 확인, 순번 증가와 메시지 생성을 처리합니다. 저장 후에만 전송 완료 응답을 보냅니다. 같은 (방, 작성 참여자, clientMessageId)는 기존 메시지를 반환하고 재방송하지 않습니다. 같은 ID로 내용을 바꾸면 409를 반환합니다. 기존 messages 테이블을 사용하므로 이번 기능에 새 DB 마이그레이션은 필요하지 않습니다.
+조회는 beforeSeq, afterSeq, aroundSeq 중 하나와 limit(기본 30, 최대 100)을 받으며, 응답 items는 순번 오름차순입니다. 검색은 q(1~100자), beforeSeq, limit(기본 20, 최대 50)을 받습니다. lastSeq는 같은 DB 스냅샷의 방 순번입니다. 프론트엔드는 실시간 이벤트의 최댓값을 복구 커서로 사용하지 않고, REST에서 확인한 순번부터 누락분을 끝까지 가져와 이벤트 도착 순서가 엇갈려도 메시지를 빠뜨리지 않습니다.
+
+저장은 방 행을 잠근 트랜잭션에서 현재 세션·참여 권한 확인, 중복 ID 확인, 순번 증가와 메시지 생성을 처리합니다. 저장 후에만 전송 완료 응답을 보냅니다. 같은 (방, 작성 참여자, clientMessageId)는 기존 메시지를 반환하고 재방송하지 않습니다. 같은 ID로 내용·첨부를 바꾸면 409를 반환합니다. `20261101000000_chat_features` 마이그레이션은 기존 데이터를 보존하며 attachments와 방의 last_activity_at, 조회 인덱스를 추가합니다.
 
 소켓 구독은 허용된 Origin, 회원/게스트 구분, 방 ID, 세션 쿠키와 CSRF를 확인합니다. 전송할 때와 각 수신자에게 새 메시지를 전달하기 직전에 세션·현재 참여 권한을 DB에서 확인합니다. 유효한 구독도 15초마다 재검사합니다. 다른 방, 만료된 세션, 퇴장한 참여자에게 메시지를 전달하지 않습니다.
 
@@ -194,7 +220,7 @@ pnpm mobile:export
 
 - typecheck: 공유 패키지·웹·API·모바일 TypeScript 검사.
 - test: HTTP/Socket.IO 기반 테스트, 비밀번호·CSRF·인증 요청 제한과 계약 검증. DB 연결 상태는 테스트 대역으로 대체합니다.
-- test:integration: TEST_DATABASE_URL이 가리키는 PostgreSQL에 임시 스키마를 만들어 실제 마이그레이션, 회원·초대·방 API와 메시지 저장·페이지 조회·중복 전송·실시간 권한·재연결 복구를 검증하고, 끝나면 그 임시 스키마만 제거합니다.
+- test:integration: TEST_DATABASE_URL이 가리키는 PostgreSQL에 임시 스키마를 만들어 실제 마이그레이션, 회원·초대·방 API, 메시지 저장·페이지·재연결, 참여자 회수·읽음·목록·검색·첨부 권한과 중복 전송을 검증하고 임시 스키마만 제거합니다. 파일 API 테스트는 저장소를 메모리 대체 구현으로 검증하므로 CI에 별도 S3 서비스는 필요하지 않습니다.
 - build: 공유 패키지와 API 컴파일, Next.js 프로덕션 빌드.
 - mobile:export: 모바일과 Expo 웹 JS 번들 생성. 실제 iOS/Android 네이티브 빌드·기기 테스트는 별도입니다.
 
@@ -218,9 +244,9 @@ pnpm db:down은 컨테이너를 종료하고 DB 볼륨은 유지합니다. 데�
 
 ## 다음 기능 구현
 
-1. 읽음 위치와 안 읽은 메시지 수, 대화 목록의 마지막 메시지 표시.
-2. 모바일 인증·참여·메시지 화면 연결.
-3. 참여자 관리, 첨부·푸시 기능을 추가하고 실제 확장 시 Redis 등을 도입합니다.
+1. 필요 시 여러 게스트 참여를 회원 계정에 연결.
+2. 모바일 인증·참여·메시지 화면 연결과 푸시.
+3. 배포·운영 저장소·백업과 업로드 보호, 실제 확장 시 Redis 도입.
 
 인증 구현 참고: [OWASP 비밀번호 저장](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [OWASP CSRF 방어](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html).
 

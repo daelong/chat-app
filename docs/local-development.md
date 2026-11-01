@@ -7,6 +7,7 @@
 - 백엔드: NestJS, `http://localhost:4000`
 - DB: Docker의 PostgreSQL, `localhost:5432`
 - 개발용 메일함: Docker의 Mailpit, `http://localhost:8025`
+- 파일 저장소: Docker의 RustFS, S3 API `http://localhost:9000`, 관리 화면 `http://localhost:9001`
 - DB 조회: DBeaver 또는 Prisma Studio
 
 ## 1. 이미 설치한 프로젝트를 다시 켤 때
@@ -50,15 +51,15 @@ docker --version
 
 `source`, `nvm use`, `export PATH`는 현재 터미널에 적용됩니다. 새 터미널에서 명령을 실행할 때도 이 준비 단계를 적용하세요. 매번 입력하지 않으려면 6장의 셸 설정을 참고하세요.
 
-### 1-3. PostgreSQL과 개발용 메일함 실행
+### 1-3. PostgreSQL·개발용 메일함·파일 저장소 실행
 
 프로젝트 루트에서 실행합니다.
 
 ```sh
-docker compose -f infra/compose.yml up -d --wait postgres mailpit
+docker compose -f infra/compose.yml up -d --wait postgres mailpit storage
 ```
 
-이 명령은 PostgreSQL과 Mailpit을 백그라운드로 실행하고 준비 상태를 기다립니다. 처음 실행하면 이미지를 다운로드하므로 시간이 걸릴 수 있습니다. 이미 실행 중인 컨테이너는 재사용합니다.
+이 명령은 PostgreSQL·Mailpit·RustFS를 백그라운드로 실행하고 준비 상태를 기다립니다. 처음 실행하면 이미지를 다운로드하므로 시간이 걸릴 수 있습니다. 이미 실행 중인 컨테이너는 재사용합니다.
 
 상태를 확인합니다.
 
@@ -66,16 +67,17 @@ docker compose -f infra/compose.yml up -d --wait postgres mailpit
 docker compose -f infra/compose.yml ps
 ```
 
-`postgres`, `mailpit`이 `Up`이고, 준비가 완료되면 `healthy`로 표시됩니다.
+세 서비스가 `Up`이고 PostgreSQL과 RustFS가 `healthy`이면 준비가 완료된 것입니다.
 
 프로젝트에 등록된 개별 실행 명령도 사용할 수 있습니다.
 
 ```sh
 pnpm db:up
 pnpm mail:up
+pnpm storage:up
 ```
 
-개별 명령은 DB 준비 완료까지 기다리지는 않습니다. `ps`에서 `postgres`가 `healthy`인지 확인한 후 다음 단계로 진행하세요.
+`storage:up`은 저장소 준비까지 기다립니다. `db:up`은 준비 완료까지 기다리지 않으므로 `ps`에서 `postgres`가 `healthy`인지 확인한 후 다음 단계로 진행하세요.
 
 ### 1-4. DB 테이블 적용
 
@@ -105,6 +107,7 @@ pnpm dev
 | API 생존 상태 | http://localhost:4000/api/v1/health | 백엔드 실행 여부 |
 | DB 연결 상태 | http://localhost:4000/api/v1/health/ready | 백엔드에서 DB 연결이 되는지 확인 |
 | 개발용 메일함 | http://localhost:8025 | 로컬 초대 이메일 확인 |
+| 파일 저장소 관리 | http://localhost:9001 | RustFS 버킷·저장 파일 확인 |
 | Prisma Studio | http://localhost:5555 | 별도 실행한 경우 DB 조회 |
 
 DB 연결 상태는 다음 명령으로도 확인할 수 있습니다.
@@ -128,6 +131,8 @@ curl http://localhost:3000/api/v1/health/ready
 프론트엔드는 백엔드 `4000` 포트로 API 요청을 전달합니다. DB만 켜거나 프론트엔드만 켜면 로그인·방 조회가 정상 동작하지 않습니다.
 
 현재 기본 메일 설정은 `MAIL_MODE=local`입니다. 입력한 이메일의 실제 수신함으로 발송하는 대신 Mailpit에 저장합니다. 초대 메일의 참여 링크는 작동합니다.
+
+RustFS의 로컬 관리 계정은 `chat-local`, 비밀번호는 `chat-local-storage-password`입니다. 개발 환경에서는 첫 파일 전송 시 `chat-attachments` 버킷을 자동 생성합니다. 기존 `apps/api/.env`에 S3 설정이 없어도 로컬 기본값으로 연결됩니다. 파일 업로드가 실패하면 `pnpm storage:up`과 `docker compose -f infra/compose.yml ps storage`를 확인하세요. 계정은 로컬 전용이며 운영에서는 별도 저장소와 비밀값을 설정합니다. 파일은 채팅방의 **파일 보내기**에서 선택하면 즉시 전송됩니다.
 
 ## 3. 프론트엔드와 백엔드를 따로 실행하고 싶을 때
 
@@ -188,6 +193,7 @@ DBeaver로 볼 때는 Prisma Studio를 실행할 필요가 없습니다. Postgre
 - `member_sessions`: 회원 로그인 세션
 - `guest_sessions`: 방 전용 게스트 세션
 - `messages`: 메시지 저장 구조
+- `attachments`: 메시지에 연결된 파일 메타데이터 (실제 파일은 RustFS)
 - `google_login_attempts`: 진행 중인 구글 로그인 검증 정보
 
 ## 5. 실행이 안 될 때
@@ -204,7 +210,7 @@ docker --version
 버전이 출력되면 DB 실행 명령을 다시 실행합니다.
 
 ```sh
-docker compose -f infra/compose.yml up -d --wait postgres mailpit
+docker compose -f infra/compose.yml up -d --wait postgres mailpit storage
 ```
 
 ### `Cannot connect to the Docker daemon` 또는 Docker 소켓 연결 실패
@@ -398,24 +404,24 @@ pnpm db:generate
 pnpm dev
 ```
 
-DB와 Mailpit이 실행 중이라면 다시 켤 필요는 없습니다. `.env`나 공유 패키지 코드를 변경한 경우에도 개발 서버를 다시 시작합니다.
+DB·Mailpit·파일 저장소가 실행 중이라면 다시 켤 필요는 없습니다. `.env`나 공유 패키지 코드를 변경한 경우에도 개발 서버를 다시 시작합니다.
 
 ### Prisma Studio 종료
 
 Studio를 실행한 터미널에서 **Ctrl + C**를 누릅니다. DB와 앱은 계속 사용할 수 있습니다.
 
-### DB와 메일함도 중지
+### DB·메일함·파일 저장소도 중지
 
 ```sh
-docker compose -f infra/compose.yml stop postgres mailpit
+docker compose -f infra/compose.yml stop postgres mailpit storage
 ```
 
 컨테이너를 다시 켤 때는 1-3의 `up` 명령을 사용합니다.
 
-Compose의 컨테이너와 네트워크까지 종료하려면 다음 프로젝트 명령을 사용할 수 있습니다. API 컨테이너와 Mailpit도 포함됩니다.
+Compose의 컨테이너와 네트워크까지 종료하려면 다음 프로젝트 명령을 사용할 수 있습니다. API·Mailpit·RustFS도 포함됩니다.
 
 ```sh
 pnpm db:down
 ```
 
-PostgreSQL 데이터는 `postgres_data` 볼륨에 보관하므로 일반적인 `stop`과 `down` 뒤에도 유지됩니다. 데이터를 유지하려면 볼륨 삭제 옵션이나 Docker Desktop의 DB 볼륨 삭제를 사용하지 마세요.
+PostgreSQL 데이터는 `postgres_data`, 첨부파일은 `attachments_data` 볼륨에 보관하므로 일반적인 `stop`과 `down` 뒤에도 유지됩니다. 데이터를 유지하려면 볼륨 삭제 옵션이나 Docker Desktop의 볼륨 삭제를 사용하지 마세요.

@@ -8,6 +8,9 @@ export const roomSchema = z.object({
   createdAt: z.iso.datetime(),
   memberCount: z.number().int().positive(),
   myRole: z.enum(['OWNER', 'MEMBER']),
+  lastReadSeq: z.number().int().nonnegative(), unreadCount: z.number().int().nonnegative(),
+  lastMessage: z.object({ body: z.string(), createdAt: z.iso.datetime(), seq: z.number().int().positive(),
+    senderDisplayName: z.string(), hasAttachment: z.boolean() }).nullable(),
 });
 export const roomListSchema = z.array(roomSchema);
 export const roomSubscriptionSchema = z.object({ roomId: z.uuid() }).strict();

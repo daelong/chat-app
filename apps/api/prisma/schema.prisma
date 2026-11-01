@@ -45,11 +45,13 @@ model ChatRoom {
   // 1:1 방 생성 시 정렬한 사용자 UUID 쌍으로 생성합니다.
   directKey     String?      @unique @map("direct_key")
   lastSeq       BigInt       @default(0) @map("last_seq")
+  lastActivityAt DateTime     @default(now()) @map("last_activity_at") @db.Timestamptz(3)
   createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   members       RoomMember[]
   messages      Message[]
   invitations   Invitation[]
 
+  @@index([lastActivityAt(sort: Desc)])
   @@map("chat_rooms")
 }
 
@@ -72,6 +74,7 @@ model RoomMember {
   @@unique([roomId, userId])
   @@unique([roomId, id])
   @@index([userId])
+  @@index([roomId, leftAt], map: "room_members_room_active_idx")
   @@map("room_members")
 }
 
@@ -85,11 +88,27 @@ model Message {
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   room            ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
   sender          RoomMember @relation(fields: [roomId, senderMemberId], references: [roomId, id], onDelete: Restrict)
+  attachments     Attachment[]
 
+  @@unique([roomId, id])
   @@unique([roomId, seq])
   @@unique([roomId, senderMemberId, clientMessageId], map: "messages_room_sender_client_key")
   @@index([senderMemberId])
   @@map("messages")
+}
+
+model Attachment {
+  id        String @id @default(uuid()) @db.Uuid
+  roomId    String @map("room_id") @db.Uuid
+  messageId String @unique @map("message_id") @db.Uuid
+  objectKey String @unique @map("object_key")
+  filename  String @db.VarChar(200)
+  mimeType  String @map("mime_type") @db.VarChar(100)
+  size      Int
+  sha256    String @db.Char(64)
+  message   Message @relation(fields: [roomId, messageId], references: [roomId, id], onDelete: Cascade, map: "attachments_message_fkey")
+
+  @@map("attachments")
 }
 
 model MemberSession {

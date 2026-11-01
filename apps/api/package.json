@@ -12,6 +12,7 @@
     "db:deploy": "prisma migrate deploy"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1161.0",
     "@chat/contracts": "workspace:*",
     "@nestjs/common": "^11.1.11", "@nestjs/core": "^11.1.11",
     "@nestjs/platform-express": "^11.1.11", "@nestjs/platform-socket.io": "^11.1.11",
