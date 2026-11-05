@@ -2,6 +2,8 @@
 
 Next.js 웹, Expo 모바일, NestJS API를 함께 관리하는 pnpm 모노레포입니다. 원본 설계는 [docs/architecture.md](docs/architecture.md)에 보관했습니다.
 
+현재 코드 기준의 프론트엔드·백엔드·인프라 구조, 기술별 사용 방식, 인증·채팅·파일 처리 흐름, DB 관계와 CI 구성은 [프로젝트 구조와 기술 사용 상세 설명](docs/project-structure-and-technologies.md)에 정리했습니다.
+
 프로젝트를 다시 실행하려면 [프로젝트 실행·종료 안내서](docs/local-development.md)를 참고하세요. Docker 경로·Node.js 버전 설정, DB·메일함 실행, 웹/API 시작, DBeaver·Prisma Studio 연결과 오류 해결을 정리했습니다.
 
 핵심 제품 요구사항은 **이메일 초대를 수락하면 회원가입 없이 해당 채팅방에만 참여할 수 있는 것**입니다. **방 생성은 로그인한 회원, 초대 발송은 해당 방의 방장만 가능**합니다. 초대 생성·발송·재전송·취소와 방 전용 게스트 입장이 구현되어 있습니다. 상세 정책은 [docs/invitation-flow.md](docs/invitation-flow.md)에 정리했습니다.
